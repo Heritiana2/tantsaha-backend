@@ -16,10 +16,19 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// --- NOUVELLE ROUTE DE TEST (Indispensable pour le bouton vert sur mobile) ---
+app.get('/', (req, res) => {
+    res.json({ 
+        status: "success", 
+        message: "Bienvenue sur l'API Tantsaha ! Le serveur est opérationnel.",
+        mode: process.env.MYSQLHOST ? 'Production (Railway)' : 'Local'
+    });
+});
+
 // Dossier uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// --- CONNEXION MYSQL ADAPTÉE POUR RAILWAY & LOCAL ---
+// --- CONNEXION MYSQL ADAPTÉE ---
 const db = mysql.createConnection({
     host: process.env.MYSQLHOST || 'localhost',
     user: process.env.MYSQLUSER || 'root',
@@ -33,11 +42,11 @@ db.connect(err => {
     if (err) {
         console.error('❌ Erreur MySQL:', err.message);
     } else {
-        console.log('✅ Base de données connectée (Mode: ' + (process.env.MYSQLHOST ? 'Railway' : 'Local') + ')');
+        console.log('✅ Base de données connectée');
     }
 });
 
-// Configuration Multer
+// Configuration Multer pour les fichiers audio
 const storage = multer.diskStorage({
     destination: 'uploads/',
     filename: (req, file, cb) => {
@@ -46,7 +55,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// --- ROUTES AUTH ---
+// --- ROUTES AUTHENTIFICATION ---
 app.post('/api/inscription', (req, res) => {
     const { nom, telephone, password, region } = req.body;
     const query = "INSERT INTO users (nom, telephone, pin, region) VALUES (?, ?, ?, ?)";
@@ -77,7 +86,7 @@ app.get('/api/historique', (req, res) => {
     });
 });
 
-// --- ROUTE MÉTIER ---
+// --- ROUTE MÉTÉO ET CALENDRIER ---
 app.get('/api/alerte-meteo', async (req, res) => {
     try {
         const { region, culture } = req.query;
@@ -103,6 +112,7 @@ app.get('/api/alerte-meteo', async (req, res) => {
     }
 });
 
+// --- ENVOI AUDIO (UPLOAD) ---
 app.post('/api/upload-audio', upload.single('audio'), (req, res) => {
     if (!req.file) return res.status(400).send("Fichier manquant");
     const audioPath = `/uploads/${req.file.filename}`;
@@ -115,44 +125,8 @@ app.post('/api/upload-audio', upload.single('audio'), (req, res) => {
     });
 });
 
-app.get('/api/expert/questions', (req, res) => {
-    const sql = `
-        SELECT c.*, u.nom as agriculteur_nom 
-        FROM consultations c 
-        JOIN users u ON c.user_id = u.id 
-        WHERE c.status = 'en_attente' 
-        ORDER BY c.date_demande ASC`;
-    
-    db.query(sql, (err, results) => {
-        if (err) return res.status(500).json(err);
-        res.json(results);
-    });
-});
-
-app.post('/api/update-profile', (req, res) => {
-    const { user_id, region } = req.body;
-    const sql = "UPDATE users SET region = ? WHERE id = ?";
-    db.query(sql, [region, user_id], (err, results) => {
-        if (err) return res.status(500).send("Erreur");
-        res.json({ message: "Voaova ny faritra!" });
-    });
-});
-
-app.post('/api/expert-reponse', upload.single('audio_reponse'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "Fichier manquant" });
-    const { consultation_id } = req.body;
-    const audioPath = `/uploads/${req.file.filename}`;
-
-    const sql = "UPDATE consultations SET audio_reponse_url = ?, status = 'repondu' WHERE id = ?";  
-    db.query(sql, [audioPath, consultation_id], (err, result) => {
-        if (err) return res.status(500).json({ error: err });
-        res.json({ message: "Valiny voasoratra!" });
-    });
-});
-
 // --- DÉMARRAGE DU SERVEUR ---
-// Important : Railway définit lui-même le port via process.env.PORT
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serveur actif sur le port ${PORT}`);
 });
